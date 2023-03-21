@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Postgres Lock Conflicts</title>
+</head>
+<body>
+
+    <h1> <a href ='/'>PostgreSQL Lock Conflicts </a></h1>
+    <i><a href = 'https://database.husseinnasser.com'>Database engineering course</a></i>
+    <hr>
+    <div id = 'divOutput'>
+
+    </div>
+
+
+    <script>
+ 
+        //A dictionary of all table locks
+        //The value is an tuple of two entries
+        //the first is the bit position for that lock
+        //the second is an 8 bit value of all conflicts locks
+        const TABLE_LOCKS = {
+            "AccessShareLock": [0,128],
+            "RowShareLock": [1,192],
+            "RowExclusiveLock": [2, 240],
+            "ShareUpdateExclusiveLock": [3,248],
+            "ShareLock": [4,236],
+            "ShareRowExclusiveLock": [5,252],
+            "ExclusiveLock": [6,254],
+            "AccessExclusiveLock": [7,255]
+        }
+
+
+        //A dictionary of all row locks
+        //The value is an tuple of two entries
+        //the first is the bit position for that lock
+        //the second is an 8 bit value of all conflicts locks
+        const ROW_LOCKS = {
+            "FORKEYSHARE": [8,2048],
+            "FORSHARE": [9,3072],
+            "FORNOKEYUPDATE": [10, 3584],
+            "FORUPDATE": [11,3840]
+        }
+
+        //The list of commands and what they conflict with
+        //The value is a bitgate.
+        const COMMANDS_LOCKS =  {
+                        "SELECT": 1,
+                        "SELECT FOR UPDATE": 2 + 2048,
+                        "SELECT FOR SHARE": 2 + 512,
+                        "SELECT FOR NO KEY UPDATE": 2 + 1024,
+                        "SELECT FOR KEY SHARE": 2 + 256,
+                        "COPY TO": 1,
+                        "INSERT": 4,
+                        "UPDATE (NO KEYS)": 4 + 1024,
+                        "UPDATE (KEYS)": 4 + 2048,
+                        "DELETE": 4 + 2048,
+                        "COPY FROM": 4 + 2048,
+                        "MERGE": 4 + 2048,
+                        "VACUUM": 8,
+                        "VACUUM FULL": 128,
+                        "TRUNCATE": 128,
+                        "REINDEX": 128,
+                        "REINDEX CONCURRENTLY": 8,
+                        "REFRESH MATERIALIZED VIEW": 128,
+                        "REFRESH MATERIALIZED VIEW CONCURRENTLY": 64,
+                        "DROP TABLE": 128,
+                        "CREATE TRIGGER": 32,
+                        "CREATE STATISTICS": 8,
+                        "CREATE INDEX": 16,
+                        "CREATE INDEX CONCURRENTLY": 8,
+                        "COMMENT ON": 8,
+                        "CLUSTER": 128,
+                        "ANALYZE": 8,
+                        "ALTER TABLE VALIDATE CONSTRAINT": 8,
+                        "ALTER TABLE SET/DROP DEFAULT": 128,
+                        "ALTER TABLE SET WITHOUT CLUSTER": 8,
+                        "ALTER TABLE SET TOAST": 8,
+                        "ALTER TABLE SET TABLESPACE": 128,
+                        "ALTER TABLE SET STORAGE": 128,
+                        "ALTER TABLE SET STATISTICS": 8,
+                        "ALTER TABLE SET SEQUENCE": 128,
+                        "ALTER TABLE SET N_DISTINCT": 8,
+                        "ALTER TABLE SET FILLFACTOR": 8,
+                        "ALTER TABLE SET DATA TYPE": 128,
+                        "ALTER TABLE SET COMPRESSION": 128,
+                        "ALTER TABLE SET AUTOVACUUUM": 8,
+                        "ALTER TABLE RESET STORAGE": 128,
+                        "ALTER TABLE RENAME": 128,
+                        "ALTER TABLE INHERIT PARENT": 128,
+                        "ALTER TABLE ENABLE/DISABLE TRIGGER": 32,
+                        "ALTER TABLE ENABLE/DISABLE RULE": 128,
+                        "ALTER TABLE ENABLE/DISABLE ROW LEVEL SECURITY": 128,
+                        "ALTER TABLE DROP EXPRESSION": 128,
+                        "ALTER TABLE DROP CONSTRAINT": 128,
+                        "ALTER TABLE DROP COLUMN": 128,
+                        "ALTER TABLE DETACH PARTITION": 8,
+                        "ALTER TABLE CLUSTER ON": 8,
+                        "ALTER TABLE ATTACH PARTITION (PARENT)": 8,
+                        "ALTER TABLE ALTER CONSTRAINT ": 128,
+                        "ALTER TABLE ADD FOREIGN KEY": 32,
+                        "ALTER TABLE ADD COLUMN": 128,
+                        "ALTER INDEX SET TABLESPACE": 128,
+                        "ALTER INDEX SET FILLFACTOR": 128,
+                        "ALTER INDEX ATTACH PARTITION": 128,
+                        "ALTER INDEX (RENAME)": 8
+                    }
+
+  
+
+function checkConflictingCommands(command){
+    //return the commands that conflicts with input command
+
+    const result = {}
+    const commandLock = COMMANDS_LOCKS[command]
+    if (!commandLock) {
+        console.error(`Command ${command} not found`);
+        return null;
+    }
+ 
+    //find the command 
+    Object.keys(TABLE_LOCKS).forEach(k => 
+    {
+        if ( (Math.pow(2,TABLE_LOCKS[k][0]) & commandLock) > 0) 
+        {
+            //table lock found k
+            //now found all conflicting commands.
+            const conflictingLocks = TABLE_LOCKS[k][1]
+            result.command = command;
+            result.tableLock = k;
+            result.tableLockConflict = conflictingLocks;
+            result.conflictingCommands = []
+            result.allowedCommands = []
+
+            //for each command see if its conflicts with input
+            Object.keys(COMMANDS_LOCKS).forEach (c => {
+                if  ( (COMMANDS_LOCKS[c] & conflictingLocks) > 0)
+                    result.conflictingCommands.push(c)
+                else{
+                    result.allowedCommands.push(c)
+                }
+            })
+        }
+
+    }
+    );
+
+    result.rowConflictingCommands = []
+
+    //populate row locks (if applicable)
+    Object.keys(ROW_LOCKS).forEach(k => 
+    {
+        if ( (Math.pow(2,ROW_LOCKS[k][0]) & commandLock) > 0) 
+        {
+            const conflictingLocks = ROW_LOCKS[k][1]
+             //for each command see if its conflicts with input
+             Object.keys(COMMANDS_LOCKS).forEach (c => {
+                if  ( (COMMANDS_LOCKS[c] & conflictingLocks) > 0)
+                    result.rowConflictingCommands.push(c)
+            })
+
+        }
+    });
+
+    return result;
+
+} 
+
+function display (result){
+    if (!result) return;
+
+    const divOutput = document.getElementById("divOutput")
+    //clear output
+    while(divOutput.firstChild) divOutput.removeChild(divOutput.firstChild);
+    const h = document.createElement("h2")
+    h.textContent = result.command;
+    divOutput.appendChild(h);
+
+    divOutput.appendChild(document.createTextNode(`${command} acquires a ${result.tableLock} table lock, following are the commands that are allowed to run concurrently with ${result.tableLock} and the commands that conflict with it`))
+
+    const h0 = document.createElement("h3")
+    h0.textContent = `Commands concurrently allowed on the table with ${command}`
+    divOutput.appendChild(h0);
+    divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on the table then tx2 is allowed to do any of the following commands concurrently on the same table without being blocked. Some DMLs executed on the same rows may block, read more below.`));
+
+
+    //allowed list
+    const olAllowed = document.createElement("ol");
+
+    result.allowedCommands.forEach(c => 
+    {
+        
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olAllowed.appendChild(li);
+    })
+
+    if (result.allowedCommands.length == 0) {
+        const i = document.createElement("i")
+        i.textContent = `Nothing is allowed to run concurrently with ${command}`
+        divOutput.appendChild(i)
+    }
+
+    divOutput.appendChild(olAllowed)
+
+    if(result.rowConflictingCommands.length >0 ) {
+        const hrow = document.createElement("h4")
+        hrow.textContent = `From the above commands, the following will conflict with ${command} when issued on the row`
+
+        divOutput.appendChild(hrow);
+        divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on a row then concurrently tx2 does any of the following commands on the same row, tx2 will block.`));
+
+    }
+    //populate row level locks
+
+    //ordered list
+    const olRowConflicts = document.createElement("ol");
+
+    result.rowConflictingCommands.forEach(c => 
+    {
+        
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olRowConflicts.appendChild(li);
+    })
+
+    divOutput.appendChild(olRowConflicts)
+
+    const h2 = document.createElement("h3")
+    h2.textContent = `Commands conflicting with ${command} on the table`
+    divOutput.appendChild(h2);
+    divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on the table then concurrently tx2 tries to do any of the following commands  on the same table, tx2 will be blocked. Conversely, if tx1 executes any of the following commands and then tx2 concurrently tries to execute ${command}, tx2 will block. `));
+
+    //ordered list
+    const olConflicts = document.createElement("ol");
+
+    result.conflictingCommands.forEach(c => 
+    {
+        
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olConflicts.appendChild(li);
+    })
+
+    divOutput.appendChild(olConflicts)
+
+}  
+
+    const queryString = window.location.search;
+    const urlParams = new URLSearchParams(queryString);
+    let command = urlParams.get("pgcommand")
+    //default to drop table command
+    if (!command) command = "DROP TABLE";
+    //setup commands
+    if (command){
+        const result = checkConflictingCommands (command);
+        display(result);
+    }
+
+    //lookup the commands 
+
+    </script>
+
+</body>
+</html>
