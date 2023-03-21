@@ -149,6 +149,7 @@ function checkConflictingCommands(command){
     );
 
     result.rowConflictingCommands = []
+    result.rowAllowedCommands = []
 
     //populate row locks (if applicable)
     Object.keys(ROW_LOCKS).forEach(k => 
@@ -160,6 +161,9 @@ function checkConflictingCommands(command){
              Object.keys(COMMANDS_LOCKS).forEach (c => {
                 if  ( (COMMANDS_LOCKS[c] & conflictingLocks) > 0)
                     result.rowConflictingCommands.push(c)
+                else if(COMMANDS_LOCKS[c] > 128 && ( (COMMANDS_LOCKS[c] & conflictingLocks) == 0))
+                    result.rowAllowedCommands.push(c)
+
             })
 
         }
@@ -209,20 +213,47 @@ function display (result){
     else
         divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on the table then tx2 is allowed to do any of the following commands concurrently on the same table without being blocked. Some DMLs executed on the same rows may block, read more below.`));
 
-
     divOutput.appendChild(olAllowed)
 
-    if(result.rowConflictingCommands.length >0 ) {
+    //what is allowed on the same row
+    if(result.rowAllowedCommands.length >0 ) {
         const hrow = document.createElement("h4")
-        hrow.textContent = `From the above commands, the following will conflict with ${command} when issued on the row`
+        hrow.textContent = `From the above commands, only the following are allowed to execute concurrently on the same row with ${command} without conflicting.`
 
         divOutput.appendChild(hrow);
-        divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on a row then concurrently tx2 does any of the following commands on the same row, tx2 will block.`));
+        divOutput.appendChild(document.createTextNode(`e.g. If tx1 executes a ${command} on a row then concurrently tx2 is allowed to execute any of the following commands even on the same row .`));
+
+    }
+
+
+    //the row conflicts
+    const olRowAllowed = document.createElement("ol");
+
+    result.rowAllowedCommands.forEach(c => 
+    {
+        
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olRowAllowed.appendChild(li);
+    })
+
+    divOutput.appendChild(olRowAllowed)
+
+    //what is not allowed on the same row
+    if(result.rowConflictingCommands.length >0 ) {
+        const hrow = document.createElement("h4")
+        hrow.textContent = `The following will conflict with ${command} when executed on a row`
+
+        divOutput.appendChild(hrow);
+        divOutput.appendChild(document.createTextNode(`e.g. If tx1 executes a ${command} on a row then concurrently tx2 does any of the following commands on the same row, tx2 will block.`));
 
     }
     //populate row level locks
 
-    //ordered list
+    //the row conflicts
     const olRowConflicts = document.createElement("ol");
 
     result.rowConflictingCommands.forEach(c => 
