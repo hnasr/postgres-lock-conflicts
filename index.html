@@ -184,8 +184,6 @@ function display (result){
     const h0 = document.createElement("h3")
     h0.textContent = `Commands concurrently allowed on the table with ${command}`
     divOutput.appendChild(h0);
-    divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on the table then tx2 is allowed to do any of the following commands concurrently on the same table without being blocked. Some DMLs executed on the same rows may block, read more below.`));
-
 
     //allowed list
     const olAllowed = document.createElement("ol");
@@ -201,11 +199,16 @@ function display (result){
         olAllowed.appendChild(li);
     })
 
+
     if (result.allowedCommands.length == 0) {
+
         const i = document.createElement("i")
         i.textContent = `Nothing is allowed to run concurrently with ${command}`
         divOutput.appendChild(i)
     }
+    else
+        divOutput.appendChild(document.createTextNode(`e.g. If tx1 does a ${command} on the table then tx2 is allowed to do any of the following commands concurrently on the same table without being blocked. Some DMLs executed on the same rows may block, read more below.`));
+
 
     divOutput.appendChild(olAllowed)
 
@@ -262,7 +265,7 @@ function display (result){
     const urlParams = new URLSearchParams(queryString);
     let command = urlParams.get("pgcommand")
     //default to drop table command
-    if (!command) command = "DROP TABLE";
+    if (!command) command = "VACUUM";
     //setup commands
     if (command){
         const result = checkConflictingCommands (command);
