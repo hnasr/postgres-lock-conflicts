@@ -9,7 +9,7 @@
 <body>
 
     <h1> <a href ='/'>PostgreSQL Lock Conflicts </a></h1>
-    <i><a href = 'https://database.husseinnasser.com'>Database engineering course</a></i>
+    <i><a href = 'https://database.husseinnasser.com'>Database engineering course</a></i> |  <i><a href = 'https://twitter.com/hnasr'>@hnasr</a></i> 
     <hr>
     <div id = 'divOutput'>
 
@@ -155,7 +155,8 @@ function checkConflictingCommands(command){
     Object.keys(ROW_LOCKS).forEach(k => 
     {
         if ( (Math.pow(2,ROW_LOCKS[k][0]) & commandLock) > 0) 
-        {
+        {   
+            result.rowLock = k;
             const conflictingLocks = ROW_LOCKS[k][1]
              //for each command see if its conflicts with input
              Object.keys(COMMANDS_LOCKS).forEach (c => {
@@ -173,6 +174,135 @@ function checkConflictingCommands(command){
 
 } 
 
+//returns the list of commands that obtain this lock
+//the result is a dictionary of tableCommands 
+function getLockInfo (lock) {
+    let lockType = "Table"
+    //get the command bit position
+    let theLock = TABLE_LOCKS[lock];
+    //if not in table it might be a row lock
+    if (!theLock) {
+        theLock = ROW_LOCKS [lock]
+        lockType = "Row"
+    }
+
+    //otherwise its not there
+    if (!theLock) {
+        console.error(`Lock ${lock} not found`);
+        return null;
+    }
+
+    const result = {}
+    result.lock = lock;
+    result.lockType = lockType;
+    result.commands = []
+    result.conflictingTableLocks = [];
+    result.conflictingRowLocks = [];
+
+    //loop through all commands and see what hits
+    Object.keys(COMMANDS_LOCKS).forEach(k => {
+    if(  (COMMANDS_LOCKS[k] & Math.pow(2, theLock[0])) > 0) {
+        result.commands.push(k);
+    }    });
+
+     //loop through all locks and see what hits
+     Object.keys(TABLE_LOCKS).forEach(k => {
+    if(  (TABLE_LOCKS[k][1] & Math.pow(2, theLock[0])) > 0) {
+        result.conflictingTableLocks.push(k);
+    }    });
+ 
+
+      //loop through all locks and see what hits
+      Object.keys(ROW_LOCKS).forEach(k => {
+    if(  (ROW_LOCKS[k][1] & Math.pow(2, theLock[0])) > 0) {
+        result.conflictingRowLocks.push(k);
+    }    });
+
+    return result;
+
+}
+
+//display lock info
+function displayLockInfo (result) {
+    if (!result) return;
+
+    const divOutput = document.getElementById("divOutput")
+    //clear output
+
+    while(divOutput.firstChild) divOutput.removeChild(divOutput.firstChild);
+    const lock = result.lock;
+    const h = document.createElement("h2")
+    h.textContent = result.lock;
+    divOutput.appendChild(h);
+    
+    divOutput.appendChild(document.createTextNode(`The ${lock} lock is a ${result.lockType} lock. This list shows the commands that acquire ${lock} and what locks conflicts with it.`))
+
+    const h0 = document.createElement("h3")
+    h0.textContent = `The following commands acquire ${lock} ${result.lockType} lock`
+    divOutput.appendChild(h0);
+
+    //commands
+    const olCommands = document.createElement("ol");
+
+    result.commands.forEach(c => 
+    {
+        
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olCommands.appendChild(li);
+    })
+
+    divOutput.appendChild(olCommands);
+    
+
+    //table locks
+    if (result.conflictingTableLocks.length > 0) {
+    const h1 = document.createElement("h3")
+    h1.textContent = `The following are table locks conflicting with ${lock}`
+    divOutput.appendChild(h1);
+    const oTableLocks = document.createElement("ol");
+
+    result.conflictingTableLocks.forEach(c => 
+    {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        oTableLocks.appendChild(li);
+    })
+
+    divOutput.appendChild(oTableLocks);
+    }   
+
+      //row locks
+    if (result.conflictingRowLocks.length > 0) {
+    const h1 = document.createElement("h3")
+    h1.textContent = `The following are row locks conflicting with ${lock}`
+    divOutput.appendChild(h1);
+    const oRowLocks = document.createElement("ol");
+
+    result.conflictingRowLocks.forEach(c => 
+    {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        oRowLocks.appendChild(li);
+    })
+
+    divOutput.appendChild(oRowLocks);
+    }   
+
+
+
+}
+
+//display commands
 function display (result){
     if (!result) return;
 
@@ -183,7 +313,37 @@ function display (result){
     h.textContent = result.command;
     divOutput.appendChild(h);
 
-    divOutput.appendChild(document.createTextNode(`${command} acquires a ${result.tableLock} table lock, following are the commands that are allowed to run concurrently with ${result.tableLock} and the commands that conflict with it`))
+    divOutput.appendChild( document.createTextNode(`The ${command} command acquires ${result.tableLock} table lock ${ (result.rowLock) ? `and a ${result.rowLock} row lock` :'' }. Following are the locks ${command} acquires, the commands that are allowed to run concurrently with its lock ${result.tableLock} and the commands that conflict with it. The list also includes the conflicting row locks if applicable`))
+
+
+    const hl = document.createElement("h3")
+    hl.textContent = `Locks acquired by ${command}`
+    divOutput.appendChild(hl);
+
+    const olLocks = document.createElement("ol");
+    
+    if (result.tableLock) {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${result.tableLock}`
+        a.textContent = result.tableLock + " (table)"
+        li.appendChild(a); 
+        olLocks.appendChild(li);
+    }
+    
+    if (result.rowLock) {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${result.rowLock}`
+        a.textContent = result.rowLock + " (row)"
+        li.appendChild(a); 
+        olLocks.appendChild(li);
+    }
+
+    divOutput.appendChild(olLocks);
+
+
+
 
     const h0 = document.createElement("h3")
     h0.textContent = `Commands concurrently allowed on the table with ${command}`
@@ -231,7 +391,7 @@ function display (result){
 
     result.rowAllowedCommands.forEach(c => 
     {
-        
+    
         const li = document.createElement("li");
         const a = document.createElement("a")
         a.href = `/?pgcommand=${c}`
@@ -292,18 +452,91 @@ function display (result){
 
 }  
 
+function home(){
+    //list all locks and all commands
+    const divOutput = document.getElementById("divOutput")
+    //clear output
+    while(divOutput.firstChild) divOutput.removeChild(divOutput.firstChild);
+    const h = document.createElement("h2")
+    h.textContent = "PostgreSQL Lock Conflicts"
+    divOutput.appendChild(h);
+
+    divOutput.appendChild( document.createTextNode(`This tool shows all commands and locks in postgres. If you select a command, it lists the locks that it acquires, commands that conflicts with it and commands are allowed to run concurrently with it without conflict. If you select a lock it lists commands that acquire the lock and what are the other conflicting locks. `))
+
+
+    const hl = document.createElement("h3")
+    hl.textContent = `Locks`
+    divOutput.appendChild(hl);
+
+
+    //ordered list
+    const olLocks = document.createElement("ol");
+
+    Object.keys(TABLE_LOCKS).forEach(l => 
+    {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${l}`
+        a.textContent = l+ " (table)";
+        li.appendChild(a); 
+        olLocks.appendChild(li);
+    })
+
+
+    Object.keys(ROW_LOCKS).forEach(l => 
+    {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pglock=${l}`
+        a.textContent = l + " (row)";
+        li.appendChild(a); 
+        olLocks.appendChild(li);
+    })
+
+    divOutput.appendChild(olLocks);
+
+
+    const hc = document.createElement("h3")
+    hc.textContent = `Commands`
+    divOutput.appendChild(hc);
+
+    //ordered list
+    const olCommands = document.createElement("ol");
+
+    Object.keys(COMMANDS_LOCKS).forEach(c => 
+    {
+        const li = document.createElement("li");
+        const a = document.createElement("a")
+        a.href = `/?pgcommand=${c}`
+        a.textContent = c;
+        li.appendChild(a); 
+        olCommands.appendChild(li);
+    })
+
+    divOutput.appendChild(olCommands);
+
+
+}
+    //init.
     const queryString = window.location.search;
     const urlParams = new URLSearchParams(queryString);
     let command = urlParams.get("pgcommand")
-    //default to drop table command
-    if (!command) command = "VACUUM";
-    //setup commands
-    if (command){
+    let pgLock = urlParams.get("pglock")
+
+    //default to pgLock home page
+    if (!command && !pgLock) {
+         home();
+    }
+    else if (!pgLock && command){
         const result = checkConflictingCommands (command);
         display(result);
     }
-
-    //lookup the commands 
+    else if (pgLock && !command)
+    {
+        const result = getLockInfo (pgLock);
+        displayLockInfo(result);
+    } 
+  
 
     </script>
 
