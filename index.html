@@ -24,35 +24,38 @@
 
 
     <script>
- 
+        //The lock are stored in 12 bit gate
+        //the leading 4 bits are for row locks the remaining 8 are for table locks
+        //the bit position are described in this json
+
         //A dictionary of all table locks
         //The value is an tuple of two entries
         //the first is the bit position for that lock
-        //the second is an 8 bit value of all conflicts locks
+        //the second is an 12 bit value of all conflicts locks
         const TABLE_LOCKS = {
-            "AccessShareLock": [0,128],
-            "RowShareLock": [1,192],
-            "RowExclusiveLock": [2, 240],
-            "ShareUpdateExclusiveLock": [3,248],
-            "ShareLock": [4,236],
-            "ShareRowExclusiveLock": [5,252],
-            "ExclusiveLock": [6,254],
-            "AccessExclusiveLock": [7,255]
+            "AccessShareLock": [0,128], //0000:00000001(1),0000:10000000
+            "RowShareLock": [1,192], //0000:00000010(2),0000:11000000
+            "RowExclusiveLock": [2, 240], //0000:00000100(4),0000:11110000
+            "ShareUpdateExclusiveLock": [3,248], //0000:0001000(8),0000:11111000
+            "ShareLock": [4,236], //0000:00010000(16),0000:11101100
+            "ShareRowExclusiveLock": [5,252], //0000:00100000(32),0000:11111100
+            "ExclusiveLock": [6,254], //0000:01000000(64),0000:11111110
+            "AccessExclusiveLock": [7,255] //0000:10000000(128),0000:11111111
         }
 
 
         //A dictionary of all row locks
         //The value is an tuple of two entries
         //the first is the bit position for that lock
-        //the second is an 8 bit value of all conflicts locks
+        //the second is an 12 bit value of all conflicts locks
         const ROW_LOCKS = {
-            "FORKEYSHARE": [8,2048],
-            "FORSHARE": [9,3072],
-            "FORNOKEYUPDATE": [10, 3584],
-            "FORUPDATE": [11,3840]
+            "FORKEYSHARE": [8,2048],  //0001:00000000(256),1000:00000000
+            "FORSHARE": [9,3072],//0010:00000000(512),1100:00000000
+            "FORNOKEYUPDATE": [10, 3584],//0100:00000000(1024),1110:00000000
+            "FORUPDATE": [11,3840]//1000:00000000(2048),1111:00000000
         }
 
-        //The list of commands and what they conflict with
+        //The list of commands and what locks they acquire
         //The value is a bitgate.
         const COMMANDS_LOCKS =  {
                         "SELECT": 1,
@@ -105,7 +108,7 @@
                         "ALTER TABLE DROP CONSTRAINT": 128,
                         "ALTER TABLE DROP COLUMN": 128,
                         "ALTER TABLE DETACH PARTITION (PARENT)": 128,
-                        "ALTER TABLE DETACH PARTITION (TARGET)": 128,
+                        "ALTER TABLE DETACH PARTITION (TARGET/DEFAULT)": 128,
                         "ALTER TABLE DETACH PARTITION CONCURRENTLY (PARENT)": 8,
                         "ALTER TABLE DETACH PARTITION CONCURRENTLY (TARGET/DEFAULT)": 128,
                         "ALTER TABLE CLUSTER ON": 8,
