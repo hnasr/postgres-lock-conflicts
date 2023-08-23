@@ -16,7 +16,7 @@
 <body>
 
     <h1> <a href ='/'>PostgreSQL Lock Conflicts </a></h1>
-    <i><a href = 'https://database.husseinnasser.com'>Database engineering course</a></i> |  <i><a href = 'https://twitter.com/hnasr'>@hnasr</a></i> 
+    <i><a href = 'https://database.husseinnasser.com'>Database engineering course</a></i> |  <i><a href = 'https://twitter.com/hnasr'>@hnasr</a></i> | <a href='https://www.buymeacoffee.com/hnasr'> ☕</a>
     <hr>
     <div id = 'divOutput'>
 
@@ -479,7 +479,7 @@ function home(){
     h.textContent = "PostgreSQL Lock Conflicts"
     divOutput.appendChild(h);
 
-    divOutput.appendChild( document.createTextNode(`This tool shows all commands and locks in postgres. If you select a command, it lists the locks that it acquires, commands that conflicts with it and commands are allowed to run concurrently with it without conflict. If you select a lock it lists commands that acquire the lock and what are the other conflicting locks. `))
+    divOutput.appendChild( document.createTextNode(`This tool shows all commands and locks in postgres. If you select a command, it lists the locks that it acquires, commands that conflicts with it and commands that are allowed to run concurrently with it (with no conflict or blocking). If you select a lock, it lists commands that acquire the lock and what are the other conflicting locks. `))
 
 
     const hl = document.createElement("h3")
